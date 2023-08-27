@@ -16,16 +16,25 @@ def find_offset_thread(within_file, y_find, sample_rate, semaphore, window, data
     semaphore.acquire()
     logging.debug(f"Processing file '{within_file.split('/').pop()}")
 
-    temp_file = make_input_file(within_file, window, ffmpeg)
-    y_within, _ = load(temp_file, sr=sample_rate)
-    os.remove(temp_file)
+    try:
+        temp_file = make_input_file(within_file, window, ffmpeg)
+        if temp_file is None:
+            return
 
-    c = correlate(y_within, y_find[:sample_rate*window], mode='valid', method='fft')
-    peak = argmax(c)
-    offset = round(peak / sample_rate, 2)
+        y_within, _ = load(temp_file, sr=sample_rate)
+        os.remove(temp_file)
 
-    semaphore.release()
-    data_target[within_file] = offset
+        c = correlate(y_within, y_find[:sample_rate*window], mode='valid', method='fft')
+        peak = argmax(c)
+        offset = round(peak / sample_rate, 2)
+
+        data_target[within_file] = offset
+
+    except Exception as e:
+        logging.error(e)
+
+    finally:
+        semaphore.release()
 
 
 def file_walker(files_path, args, y_find, sample_rate, semaphore, offsets):
