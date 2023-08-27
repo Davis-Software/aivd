@@ -53,7 +53,8 @@ def find_offset_thread(within_file, y_find, sample_rate, semaphore, window, data
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--find-offset-of', metavar='<audio file>', type=str, help='Find the offset of file')
+    parser.add_argument('--find-offset-of', metavar='<audio file>', type=str, help='Find the offset of file',
+                        required=True)
     parser.add_argument('--within', metavar='<folder>', type=str, help='Within files folder', default=".")
     parser.add_argument('--extension', metavar='<file extension>', type=str, default="*",
                         help='File with the extension to use')
