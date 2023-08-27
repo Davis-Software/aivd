@@ -2,37 +2,14 @@ import os
 import time
 import json
 import logging
-import argparse
 import threading
-import subprocess
 
-from uuid import uuid4
 from numpy import argmax
 from librosa import load
 from scipy.signal import correlate
 
-
-def make_input_file(file_path: str, to_max: int, ffmpeg):
-    name = f"/tmp/{str(uuid4())}.wav"
-    subprocess.Popen(
-        [
-            ffmpeg,
-            "-y",
-            "-loglevel",
-            "quiet",
-            "-to",
-            str(to_max),
-            "-i",
-            file_path,
-            name
-        ],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-
-    time.sleep(.5)
-
-    return name
+from arg_parser import parse_sys_args
+from ffmpeg_utils import make_input_file
 
 
 def find_offset_thread(within_file, y_find, sample_rate, semaphore, window, data_target, ffmpeg):
@@ -51,22 +28,35 @@ def find_offset_thread(within_file, y_find, sample_rate, semaphore, window, data
     data_target[within_file] = offset
 
 
+def file_walker(files_path, args, y_find, sample_rate, semaphore, offsets):
+    files = os.listdir(files_path)
+    for i, file in enumerate(files):
+        file = os.path.join(files_path, file)
+
+        if not os.path.isfile(file) and args.recursive:
+            file_walker(file, args, y_find, sample_rate, semaphore, offsets)
+            continue
+
+        if args.extension != "*" and True not in [file.endswith(val) for val in args.extension.split(",")]:
+            logging.debug(f"Skipping file {i + 1} ('{file}') of {len(files)} as "
+                          f"it does not match the specified file extension '{args.extension}'")
+            continue
+
+        if args.extension_skip != "" and True in [file.endswith(val) for val in args.extension_skip.split(",")]:
+            logging.debug(f"Skipping file {i + 1} ('{file}') of {len(files)} as "
+                          f"it matches the specified file extension '{args.extension_skip}'")
+            continue
+
+        thread = threading.Thread(
+            target=find_offset_thread,
+            args=(file, y_find, sample_rate, semaphore, args.window, offsets, args.ffmpeg,),
+            daemon=True
+        )
+        thread.start()
+
+
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--find-offset-of', metavar='<audio file>', type=str, help='Find the offset of file',
-                        required=True)
-    parser.add_argument('--within', metavar='<folder>', type=str, help='Within files folder', default=".")
-    parser.add_argument('--extension', metavar='<file extension>', type=str, default="*",
-                        help='File with the extension to use')
-    parser.add_argument('--window', metavar='<seconds>', type=int, default=60,
-                        help='Only use first n seconds of a target audio')
-    parser.add_argument("--log-level", metavar="<level>", type=str, default="info",
-                        help="Log Level: debug, info, warning, error")
-    parser.add_argument("--raw", metavar="<boolean>", type=bool, default=False,
-                        help="Displays the result as raw json data instead of formatting it")
-    parser.add_argument("--ffmpeg", metavar="<path>", type=str, default="/usr/bin/ffmpeg",
-                        help="FFMPEG path")
-    args = parser.parse_args()
+    args = parse_sys_args()
 
     logging.basicConfig(level=args.log_level.upper(), format='%(levelname)s - %(message)s')
     offsets = dict()
@@ -75,23 +65,12 @@ def main():
 
     logging.debug("Init complete - processing files...")
 
-    files = os.listdir(args.within)
-    logging.info(f"Processing {len(files)} files")
+    file_count = 0
+    for _, _, files in os.walk(args.within):
+        file_count += len(files)
+    logging.info(f"Processing {file_count} files")
 
-    for i, file in enumerate(files):
-        file = os.path.join(args.within, file)
-
-        if args.extension != "*" and not file.endswith(args.extension):
-            logging.debug(f"Skipping file {i + 1} ('{file}') of {len(files)} as"
-                          f"it does not match the specified file extension '{args.extension}'")
-            continue
-
-        thread = threading.Thread(
-            target=find_offset_thread,
-            args=(file, y_find, sample_rate, semaphore, args.window, offsets, args.ffmpeg, ),
-            daemon=True
-        )
-        thread.start()
+    file_walker(args.within, args, y_find, sample_rate, semaphore, offsets)
 
     while semaphore._value != 3:
         time.sleep(.1)

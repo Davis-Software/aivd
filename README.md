@@ -22,21 +22,24 @@ It can be thus for example be used to find the intro of a tv show in its episode
 
 ### Usage
 ```shell
-    aivd [-h] [--find-offset-of <audio file>] [--within <folder>]
-            [--extension <file extension>] [--window <seconds>]
+    main.py [-h] --find-offset-of <audio file> [--within <folder>]
+            [--extension <file extension>] [--recursive <boolean>]
+            [--extension-skip <file extension>] [--window <seconds>]
             [--log-level <level>] [--raw <boolean>] [--ffmpeg <path>]
 ```
 
-| Option                          | Type      | Description                                     | Default             | Required |
-|---------------------------------|-----------|-------------------------------------------------|---------------------|----------|
-| `-h` or `--help`                | flag      | Display the help dialog                         |                     | no       |
-| `--find-offset-of <audio file>` | `string`  | Audio file to search for                        |                     | yes      |
-| `--within <folder>`             | `string`  | Folder path with video files to search in       | `.`                 | no       |
-| `--extension <ile extension>`   | `string`  | Only search in the files with this extension    | `*`                 | no       |
-| `--window <seconds>`            | `integer` | Only search in the first n seconds of the files | `60`                | no       |
-| `--log-level <log level>`       | `string`  | Set the applications log level                  | `"info"`            | no       |
-| `--raw <boolean>`               | `boolean` | Set raw output (as JSON)                        | `false`             | no       |
-| `--ffmpeg <path>`               | `string`  | Path to a custom ffmpeg installation            | `"/usr/bin/ffmpeg"` | no       |
+| Option                             | Type      | Description                                     | Default             | Required |
+|------------------------------------|-----------|-------------------------------------------------|---------------------|----------|
+| `-h` or `--help`                   | flag      | Display the help dialog                         |                     | no       |
+| `--find-offset-of <audio file>`    | `string`  | Audio file to search for                        |                     | yes      |
+| `--within <folder>`                | `string`  | Folder path with video files to search in       | `"."`               | no       |
+| `--recursive <boolean>`            | `boolean` | Recursively traverse specified folder           | `false`             | no       |
+| `--extension <ile extension>`      | `string`  | Only search in the files with this extension    | `"*"`               | no       |
+| `--extension-skip <ile extension>` | `string`  | Skip the files with this extension              | `""`                | no       |
+| `--window <seconds>`               | `integer` | Only search in the first n seconds of the files | `60`                | no       |
+| `--log-level <log level>`          | `string`  | Set the applications log level                  | `"info"`            | no       |
+| `--raw <boolean>`                  | `boolean` | Set raw output (as JSON)                        | `false`             | no       |
+| `--ffmpeg <path>`                  | `string`  | Path to a custom ffmpeg installation            | `"/usr/bin/ffmpeg"` | no       |
 
 ### Compilation
 You can use pyinstaller to generate a binary in `./dist/`
