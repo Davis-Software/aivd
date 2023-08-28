@@ -10,9 +10,9 @@
 
 ### What is AIVD?
 AIVD or Audio-In-Video-Detector finds a specified audio file in the audio track
-of video files and returns the audio offset
+of video files and returns the audio offset.
 
-It can be thus for example be used to find the intro of a tv show in its episodes
+Thus, it can for example be used to find the intro of a tv show in its episodes.
 
 ### Requirements
 * currently works on linux only

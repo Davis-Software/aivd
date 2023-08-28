@@ -19,6 +19,7 @@ def find_offset_thread(within_file, y_find, sample_rate, semaphore, window, data
     try:
         temp_file = make_input_file(within_file, window, ffmpeg)
         if temp_file is None:
+            logging.error(f"Conversion of {within_file} failed. Skipping...")
             return
 
         y_within, _ = load(temp_file, sr=sample_rate)
@@ -66,6 +67,10 @@ def file_walker(files_path, args, y_find, sample_rate, semaphore, offsets):
 
 def main():
     args = parse_sys_args()
+
+    if not os.path.exists(args.ffmpeg) or not os.path.isfile(args.ffmpeg):
+        logging.critical("FFMPEG could not be found under the specified path. Please check your configuration.")
+        exit(12)
 
     logging.basicConfig(level=args.log_level.upper(), format='%(levelname)s - %(message)s')
     offsets = dict()
