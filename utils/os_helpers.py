@@ -1,5 +1,8 @@
 import os
 import subprocess
+import multiprocessing
+
+from utils.logger import Logger
 
 
 def find_ffmpeg():
@@ -7,7 +10,11 @@ def find_ffmpeg():
     return output.decode('utf-8').strip()
 
 
-def file_walker(files_path, logging, recursive=False, extension="*", extension_skip=""):
+def thread_count():
+    return multiprocessing.cpu_count()
+
+
+def file_walker(files_path, logging: Logger, recursive=False, extension="*", extension_skip=""):
     files = os.listdir(files_path)
     output = []
 
@@ -34,3 +41,16 @@ def file_walker(files_path, logging, recursive=False, extension="*", extension_s
         output.append(file)
 
     return output
+
+
+def is_audio_files(files):
+    ready_files = []
+    to_convert_files = []
+
+    for file in files:
+        if file.endswith(".wav"):
+            ready_files.append(file)
+        else:
+            to_convert_files.append(file)
+
+    return ready_files, to_convert_files
