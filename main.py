@@ -102,6 +102,7 @@ def main(input_file, directory, recursive, extension, exclude, time, window, for
         return
 
     detector = Detector(input_file, files, time, window, ffmpeg, logger, not no_clean)
+    detector.run()
 
 
 if __name__ == '__main__':
