@@ -16,6 +16,7 @@ class Detector:
                  clean=True, threads=1):
         self._base_file = base_file
         self._files = files
+        self.__ready_files, self.__to_convert = os_helpers.is_audio_files(files)
 
         self._ffmpeg_semaphore = threading.Semaphore(threads)
         self._detector_semaphore = multiprocessing.Semaphore(threads)
@@ -33,9 +34,9 @@ class Detector:
 
         self._output_data = {}
 
-        self._loader()
+        self._load()
 
-    def _ffmpeg_thread(self, file, file_obj):
+    def __ffmpeg_thread(self, file, file_obj):
         self._ffmpeg_semaphore.acquire()
         target = file_obj["location"]
 
@@ -66,7 +67,7 @@ class Detector:
         file_obj["complete"] = True
         self._ffmpeg_semaphore.release()
 
-    def _loader(self):
+    def _load(self):
         self.logger.info("Loading libraries...")
         try:
             from numpy import argmax
@@ -87,11 +88,14 @@ class Detector:
         self.logger.debug("Base file loaded.")
         self.logger.empty_line()
 
-    def convert(self):
-        ready, to_convert = os_helpers.is_audio_files(self._files)
-        self.logger.info(f"Converting {len(to_convert)} files...")
+    def _convert(self):
+        if len(self.__to_convert) == 0:
+            self.logger.info("No files to convert. Skipping conversion...")
+            return
 
-        for file in to_convert:
+        self.logger.info(f"Converting {len(self.__to_convert)} files...")
+
+        for file in self.__to_convert:
             file_obj = {
                 "location": f"/tmp/{uuid.uuid4().hex}.wav",
                 "success": False,
@@ -99,7 +103,7 @@ class Detector:
             }
 
             threading.Thread(
-                target=self._ffmpeg_thread,
+                target=self.__ffmpeg_thread,
                 args=(file, file_obj, )
             ).start()
 
@@ -112,7 +116,10 @@ class Detector:
         self.logger.debug("Conversions complete.")
         self.logger.empty_line()
 
-    def clean_up(self):
+    def _detect(self):
+        pass
+
+    def _clean_up(self):
         if not self.clean:
             self.logger.debug("Skipping clean up.")
             return
@@ -126,7 +133,7 @@ class Detector:
         self.logger.debug("Clean up complete.")
 
     def run(self):
-        self.convert()
-        self.clean_up()
+        self._convert()
+        self._clean_up()
 
         return self._output_data

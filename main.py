@@ -81,7 +81,7 @@ def main(input_file, directory, recursive, extension, exclude, time_, window, fo
     logger.debug(f"\tSkipping clean up: {no_clean}")
     logger.empty_line()
 
-    logger.info("Checking if ffmpeg exists.")
+    logger.info("Checking if ffmpeg exists...")
     if not os.path.exists(ffmpeg):
         logger.error(f"ffmpeg not found at '{ffmpeg}'.")
         exit(-1)
@@ -98,7 +98,7 @@ def main(input_file, directory, recursive, extension, exclude, time_, window, fo
     logger.empty_line()
 
     if dry_run:
-        logger.info("Dry run, exiting.")
+        logger.info("Dry run, exiting!")
         return
 
     detector = Detector(input_file, files, time_, window, ffmpeg, logger, not no_clean)
