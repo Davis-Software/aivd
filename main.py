@@ -18,6 +18,14 @@ def print_version(ctx, _param, value):
     ctx.exit()
 
 
+def load_legacy(ctx, _param, value):
+    if not value or ctx.resilient_parsing:
+        return
+    from legacy.main import main as legacy_main
+    legacy_main()
+    ctx.exit()
+
+
 @click.command()
 @click.argument("input_file", type=click.Path(exists=True), metavar="INPUT_FILE")
 @click.argument("directory", type=click.Path(exists=True), metavar="DIRECTORY")
@@ -43,6 +51,8 @@ def print_version(ctx, _param, value):
 @click.option("--debug", is_flag=True, help="Print debug information to the console.")
 @click.option("--dry-run", is_flag=True, help="Do not run the program, just print the parameters.")
 @click.option("--version", is_flag=True, help="Print the version number and exit.", callback=print_version,
+              expose_value=False, is_eager=True)
+@click.option("--legacy", is_flag=True, help="Use the legacy cli.", callback=load_legacy,
               expose_value=False, is_eager=True)
 def main(input_file, directory, recursive, extension, exclude, time, window, format_, threads, ffmpeg, no_clean, silent,
          debug, dry_run):
