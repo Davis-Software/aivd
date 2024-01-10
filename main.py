@@ -1,102 +1,82 @@
-import os
-import time
-import json
-import logging
-import threading
+import click
 
-from numpy import argmax
-from librosa import load
-from scipy.signal import correlate
+from utils import os_helpers
 
-from arg_parser import parse_sys_args
-from ffmpeg_utils import make_input_file
+__version__ = "0.1.0"
+
+_PERMITTED_EXTENSIONS = ["mp4", "mkv", "avi", "mov", "wmv", "mp3", "wav", "flac", "ogg", "m4a", "wma"]
 
 
-def find_offset_thread(within_file, y_find, sample_rate, semaphore, window, data_target, ffmpeg):
-    semaphore.acquire()
-    logging.debug(f"Processing file '{within_file.split('/').pop()}")
+class Logger:
+    def __init__(self, silent=False, debug=False):
+        self._silent = silent
+        self._debug = debug
 
-    try:
-        temp_file = make_input_file(within_file, window, ffmpeg)
-        if temp_file is None:
-            logging.error(f"Conversion of {within_file} failed. Skipping...")
-            return
+    def echo(self, message, err=False):
+        if not self._silent:
+            click.echo(message, err=err)
 
-        y_within, _ = load(temp_file, sr=sample_rate)
-        os.remove(temp_file)
+    def error(self, message):
+        self.echo(message, True)
 
-        c = correlate(y_within, y_find[:sample_rate*window], mode='valid', method='fft')
-        peak = argmax(c)
-        offset = round(peak / sample_rate, 2)
+    def info(self, message):
+        self.echo(message)
 
-        data_target[within_file] = offset
-
-    except Exception as e:
-        logging.error(e)
-
-    finally:
-        semaphore.release()
+    def debug(self, message):
+        if self._debug:
+            click.echo(message)
 
 
-def file_walker(files_path, args, y_find, sample_rate, semaphore, offsets):
-    files = os.listdir(files_path)
-    for i, file in enumerate(files):
-        file = os.path.join(files_path, file)
-
-        if not os.path.isfile(file) and args.recursive:
-            file_walker(file, args, y_find, sample_rate, semaphore, offsets)
-            continue
-
-        if args.extension != "*" and True not in [file.endswith(val) for val in args.extension.split(",")]:
-            logging.debug(f"Skipping file {i + 1} ('{file}') of {len(files)} as "
-                          f"it does not match the specified file extension '{args.extension}'")
-            continue
-
-        if args.extension_skip != "" and True in [file.endswith(val) for val in args.extension_skip.split(",")]:
-            logging.debug(f"Skipping file {i + 1} ('{file}') of {len(files)} as "
-                          f"it matches the specified file extension '{args.extension_skip}'")
-            continue
-
-        thread = threading.Thread(
-            target=find_offset_thread,
-            args=(file, y_find, sample_rate, semaphore, args.window, offsets, args.ffmpeg,),
-            daemon=True
-        )
-        thread.start()
+def print_version(ctx, param, value):
+    if not value or ctx.resilient_parsing:
+        return
+    click.echo(__version__)
+    ctx.exit()
 
 
-def main():
-    args = parse_sys_args()
+@click.command()
+@click.argument("input_file", type=click.Path(exists=True), metavar="INPUT_FILE")
+@click.argument("directory", type=click.Path(exists=True), metavar="DIRECTORY")
+@click.option("-r", "--recursive", is_flag=True, help="Search recursively in the specified directory.")
+@click.option("-e", "--extension", type=str, default=','.join(_PERMITTED_EXTENSIONS),
+              help="The extension of the video/audio files to search in. "
+                   f"Default is '{','.join(_PERMITTED_EXTENSIONS)}'. Can be a comma separated list.")
+@click.option("-x", "--exclude", type=str, default="", help="Exclude the specified extension from the search. "
+                                                            "Default is no exclusions. Can be a comma separated list.")
+@click.option("-w", "--window", type=int, default=60, help="The window size in seconds to search for the audio file. "
+                                                           "Default is 60 seconds.")
+@click.option("-f", "--format", "format_", type=click.Choice(["json", "txt", "raw"]), default="txt",
+              help="The output format. Default is TEXT.")
+@click.option("--ffmpeg", type=str, default=lambda: os_helpers.find_ffmpeg(), help="The path to the ffmpeg executable. "
+                                                                                   "Default is the system path.")
+@click.option("--silent", is_flag=True, help="Do not print anything but the final output to the console.")
+@click.option("--debug", is_flag=True, help="Print debug information to the console.")
+@click.option("--version", is_flag=True, help="Print the version number and exit.", callback=print_version,
+              expose_value=False, is_eager=True)
+def main(input_file, directory, recursive, extension, exclude, window, format_, ffmpeg, silent, debug):
+    """
+    Find the INPUT_FILE audio file in the specified video or audio files in a folder and return the time index.
 
-    if not os.path.exists(args.ffmpeg) or not os.path.isfile(args.ffmpeg):
-        logging.critical("FFMPEG could not be found under the specified path. Please check your configuration.")
-        exit(12)
+    \b
+    INPUT_FILE: The audio file to search for.
+    DIRECTORY: The directory with the video or audio files to search in.
+    """
 
-    logging.basicConfig(level=args.log_level.upper(), format='%(levelname)s - %(message)s')
-    offsets = dict()
-    semaphore = threading.Semaphore(3)
-    y_find, sample_rate = load(args.find_offset_of, sr=None)
+    logger = Logger(silent, debug)
 
-    logging.debug("Init complete - processing files...")
+    logger.debug(f"AIVD Version: {__version__}")
+    logger.debug("Starting with the following parameters:")
+    logger.debug(f"\tInput file: {input_file}")
+    logger.debug(f"\tDirectory: {directory}")
+    logger.debug(f"\tRecursive: {recursive}")
+    logger.debug(f"\tExtension: {extension}")
+    logger.debug(f"\tExclude: {exclude}")
+    logger.debug(f"\tWindow: {window}")
+    logger.debug(f"\tFormat: {format_}")
+    logger.debug(f"\tFFmpeg: {ffmpeg}\n")
 
-    file_count = 0
-    for _, _, files in os.walk(args.within):
-        file_count += len(files)
-    logging.info(f"Processing {file_count} files")
-
-    file_walker(args.within, args, y_find, sample_rate, semaphore, offsets)
-
-    while semaphore._value != 3:
-        time.sleep(.1)
-
-    logging.info("Processing compete.")
-
-    if args.raw:
-        print(json.dumps(offsets))
-
-    else:
-        for file, offset in offsets.items():
-            print(f"{file.split('/').pop()}\n\t-> {offset}s offset")
+    files = os_helpers.file_walker(directory, logger, recursive, extension, exclude)
+    logger.info(f"Found {len(files)} files to search in.")
 
 
 if __name__ == '__main__':

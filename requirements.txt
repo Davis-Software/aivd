@@ -1,5 +1,5 @@
 librosa==0.8.0
 scipy==1.6.1
-matplotlib==3.4.2
 numpy~=1.21.6
 pyinstaller
+click
