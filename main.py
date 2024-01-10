@@ -35,8 +35,8 @@ def load_legacy(ctx, _param, value):
                    f"Default is '{','.join(_PERMITTED_EXTENSIONS)}'. Can be a comma separated list.")
 @click.option("-x", "--exclude", type=str, default="", help="Exclude the specified extension from the search. "
                                                             "Default is no exclusions. Can be a comma separated list.")
-@click.option("-t", "--time", type=int, default=-1, help="How many seconds of the input audio file to search for. "
-                                                         "Default is the whole audio file.")
+@click.option("-t", "--time", "time_", type=int, default=-1, help="How many seconds of the input audio file"
+                                                                 "to search for. Default is the whole audio file.")
 @click.option("-w", "--window", type=int, default=60, help="The window size in seconds to search for the audio file. "
                                                            "Default is 60 seconds.")
 @click.option("-f", "--format", "format_", type=click.Choice(["json", "txt", "raw"]), default="txt",
@@ -54,7 +54,7 @@ def load_legacy(ctx, _param, value):
               expose_value=False, is_eager=True)
 @click.option("--legacy", is_flag=True, help="Use the legacy cli.", callback=load_legacy,
               expose_value=False, is_eager=True)
-def main(input_file, directory, recursive, extension, exclude, time, window, format_, threads, ffmpeg, no_clean, silent,
+def main(input_file, directory, recursive, extension, exclude, time_, window, format_, threads, ffmpeg, no_clean, silent,
          debug, dry_run):
     """
     Find the INPUT_FILE audio file in the specified video or audio files in a folder and return the time index.
@@ -68,22 +68,22 @@ def main(input_file, directory, recursive, extension, exclude, time, window, for
 
     logger.debug(f"AIVD Version: {__version__}")
     logger.debug("Starting with the following parameters:")
-    logger.debug(f"\tInput file: {input_file}")
-    logger.debug(f"\tDirectory: {directory}")
+    logger.debug(f"\tInput file: '{input_file}'")
+    logger.debug(f"\tDirectory: '{directory}'")
     logger.debug(f"\tRecursive: {recursive}")
     logger.debug(f"\tExtension: {extension}")
     logger.debug(f"\tExclude: {exclude}")
-    logger.debug(f"\tTime: {time}")
+    logger.debug(f"\tTime: {time_}")
     logger.debug(f"\tWindow: {window}")
     logger.debug(f"\tFormat: {format_}")
     logger.debug(f"\tThreads: {threads}")
-    logger.debug(f"\tFFmpeg: {ffmpeg}")
+    logger.debug(f"\tFFmpeg: '{ffmpeg}'")
     logger.debug(f"\tSkipping clean up: {no_clean}")
     logger.empty_line()
 
     logger.info("Checking if ffmpeg exists.")
     if not os.path.exists(ffmpeg):
-        logger.error(f"ffmpeg not found at {ffmpeg}.")
+        logger.error(f"ffmpeg not found at '{ffmpeg}'.")
         exit(-1)
     logger.debug("ffmpeg found.")
     logger.empty_line()
@@ -101,7 +101,7 @@ def main(input_file, directory, recursive, extension, exclude, time, window, for
         logger.info("Dry run, exiting.")
         return
 
-    detector = Detector(input_file, files, time, window, ffmpeg, logger, not no_clean)
+    detector = Detector(input_file, files, time_, window, ffmpeg, logger, not no_clean)
     detector.run()
 
 

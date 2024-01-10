@@ -1,4 +1,3 @@
-import time
 import subprocess
 from uuid import uuid4
 

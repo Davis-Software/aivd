@@ -12,7 +12,7 @@ from utils.logger import Logger
 
 
 class Detector:
-    def __init__(self, base_file: str, files: list[str], time: int, window: int, ffmpeg: str, logger: Logger,
+    def __init__(self, base_file: str, files: list[str], time_: int, window: int, ffmpeg: str, logger: Logger,
                  clean=True, threads=1):
         self._base_file = base_file
         self._files = files
@@ -20,7 +20,7 @@ class Detector:
         self._ffmpeg_semaphore = threading.Semaphore(threads)
         self._detector_semaphore = multiprocessing.Semaphore(threads)
 
-        self.time = time
+        self.time = time_
         self.window = window
         self.ffmpeg = ffmpeg
         self.logger = logger
@@ -39,7 +39,7 @@ class Detector:
         self._ffmpeg_semaphore.acquire()
         target = file_obj["location"]
 
-        self.logger.debug(f"\tConverting {file} to {target}...")
+        self.logger.debug(f"\tConverting '{file}' to '{target}'...")
         ffmpeg = subprocess.Popen(
             [
                 self.ffmpeg,
@@ -59,9 +59,9 @@ class Detector:
 
         if ffmpeg.returncode == 0:
             file_obj["success"] = True
-            self.logger.debug(f"\tConverted {file} to {target}.")
+            self.logger.debug(f"\tConverted '{file}' to '{target}'.")
         else:
-            self.logger.error(f"\tError converting {file} to {target}: {ffmpeg.stderr.read().decode('utf-8')}")
+            self.logger.error(f"\tError converting '{file}' to '{target}': {ffmpeg.stderr.read().decode('utf-8')}")
 
         file_obj["complete"] = True
         self._ffmpeg_semaphore.release()
@@ -73,7 +73,7 @@ class Detector:
             from librosa import load
             from scipy.signal import correlate
         except ImportError as e:
-            self.logger.error(f"Error loading libraries: {e}")
+            self.logger.error(f"Error loading libraries: '{e}'")
             exit(1)
         self.logger.debug("Libraries loaded.")
         self.logger.empty_line()
@@ -82,7 +82,7 @@ class Detector:
         try:
             self.__y_find, self.__sr = load(self._base_file, sr=None, duration=self.time if self.time > 0 else None)
         except Exception as e:
-            self.logger.error(f"Error loading base file: {e}")
+            self.logger.error(f"Error loading base file: '{e}'")
             exit(2)
         self.logger.debug("Base file loaded.")
         self.logger.empty_line()
@@ -122,7 +122,7 @@ class Detector:
             file = self.__converter_map[file]["location"]
             if os.path.exists(file):
                 os.remove(file)
-                self.logger.debug(f"\tRemoved {file}")
+                self.logger.debug(f"\tRemoved '{file}'")
         self.logger.debug("Clean up complete.")
 
     def run(self):
