@@ -8,6 +8,14 @@ class Logger:
         self._silent = silent
         self._debug = debug
 
+    @property
+    def is_silent(self):
+        return self._silent
+
+    @property
+    def is_debug(self):
+        return self._debug
+
     def echo(self, prefix, message, secondary_color=Fore.WHITE, prefix_color=Fore.CYAN, message_color=Fore.RESET,
              err=False):
         if not self._silent:
@@ -15,9 +23,11 @@ class Logger:
                        f"{Style.RESET_ALL}",
                        err=err)
 
-    def error(self, message):
+    def error(self, message, trace=None):
         self.echo("ERROR", message, secondary_color=Fore.YELLOW, prefix_color=Fore.RED, message_color=Fore.LIGHTRED_EX,
                   err=True)
+        if trace is not None and self._debug and not self._silent:
+            click.echo(f"\t{Fore.WHITE}{trace}{Style.RESET_ALL}", err=True)
 
     def info(self, message):
         self.echo("INFO", message)

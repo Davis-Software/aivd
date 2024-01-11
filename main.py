@@ -1,5 +1,8 @@
+import json
 import click
 import os.path
+
+from colorama import Fore, Style
 
 from detector import Detector
 
@@ -54,8 +57,8 @@ def load_legacy(ctx, _param, value):
               expose_value=False, is_eager=True)
 @click.option("--legacy", is_flag=True, help="Use the legacy cli.", callback=load_legacy,
               expose_value=False, is_eager=True)
-def main(input_file, directory, recursive, extension, exclude, time_, window, format_, threads, ffmpeg, no_clean, silent,
-         debug, dry_run):
+def main(input_file, directory, recursive, extension, exclude, time_, window, format_, threads, ffmpeg, no_clean,
+         silent, debug, dry_run):
     """
     Find the INPUT_FILE audio file in the specified video or audio files in a folder and return the time index.
 
@@ -66,6 +69,17 @@ def main(input_file, directory, recursive, extension, exclude, time_, window, fo
 
     logger = Logger(silent, debug)
 
+    if time_ != -1 and time_ < 1:
+        logger.error("Time must be greater than 0.")
+        exit(-1)
+    if window < 1:
+        logger.error("Window must be greater than 0.")
+        exit(-1)
+    if threads < 1 or threads > os_helpers.thread_count():
+        logger.error(f"Threads must be between 1 and {os_helpers.thread_count()} (CPU thread count).")
+        exit(-1)
+
+    logger.info("Starting AIVD...")
     logger.debug(f"AIVD Version: {__version__}")
     logger.debug("Starting with the following parameters:")
     logger.debug(f"\tInput file: '{input_file}'")
@@ -101,8 +115,26 @@ def main(input_file, directory, recursive, extension, exclude, time_, window, fo
         logger.info("Dry run, exiting!")
         return
 
-    detector = Detector(input_file, files, time_, window, ffmpeg, logger, not no_clean)
-    detector.run()
+    with Detector(input_file, files, time_, window, ffmpeg, logger, not no_clean, threads) as detector:
+        data = detector.run()
+
+    if format_ == "json":
+        logger.debug("Outputting JSON...")
+        logger.empty_line()
+
+        click.echo(json.dumps(data))
+
+    elif format_ == "txt":
+        logger.debug("Outputting in formatted text...")
+        logger.empty_line()
+
+        for file, offset in data.items():
+            click.echo(f"{Fore.RESET}{file.split('/').pop()} {Fore.CYAN}({Fore.WHITE}{file}{Fore.CYAN})"
+                       f"\n\t{Fore.GREEN}-> {Fore.RESET}{offset}{Fore.WHITE}s {Fore.RESET}offset{Style.RESET_ALL}")
+        logger.empty_line()
+
+    elif format_ == "raw":
+        click.echo(json.dumps(data).encode("utf-8"))
 
 
 if __name__ == '__main__':
