@@ -9,7 +9,7 @@ from detector import Detector
 from utils import os_helpers
 from utils.logger import Logger
 
-__version__ = "0.1.0"
+__version__ = "2.1.3"
 
 _PERMITTED_EXTENSIONS = ["mp4", "mkv", "avi", "mov", "wmv", "mp3", "wav", "flac", "ogg", "m4a", "wma"]
 
@@ -38,8 +38,8 @@ def load_legacy(ctx, _param, value):
                    f"Default is '{','.join(_PERMITTED_EXTENSIONS)}'. Can be a comma separated list.")
 @click.option("-x", "--exclude", type=str, default="", help="Exclude the specified extension from the search. "
                                                             "Default is no exclusions. Can be a comma separated list.")
-@click.option("-t", "--time", "time_", type=int, default=-1, help="How many seconds of the input audio file"
-                                                                 "to search for. Default is the whole audio file.")
+@click.option("-t", "--time", "time_", type=int, default=-1, help="How many seconds of the input audio file "
+                                                                  "to search for. Default is the whole audio file.")
 @click.option("-w", "--window", type=int, default=60, help="The window size in seconds to search for the audio file. "
                                                            "Default is 60 seconds.")
 @click.option("-f", "--format", "format_", type=click.Choice(["json", "txt", "raw"]), default="txt",

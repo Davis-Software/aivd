@@ -1,6 +1,6 @@
 # Audio-In-Video-Detector AIVD
 
-> Developed by [Davis_Software](https://github.com/Davis-Software) &copy; 2023
+> Developed by [Davis_Software](https://github.com/Davis-Software) &copy; 2024
 
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/Davis-Software/aivd?style=for-the-badge)
 ![GitHub issues](https://img.shields.io/github/issues-raw/Davis-Software/aivd?style=for-the-badge)
@@ -22,7 +22,36 @@ Thus, it can for example be used to find the intro of a tv show in its episodes.
 
 ### Usage
 ```shell
-    main.py [-h] --find-offset-of <audio file> [--within <folder>]
+    aivd [OPTIONS] INPUT_FILE DIRECTORY
+
+        Find the INPUT_FILE audio file in the specified video or audio files in a
+        folder and return the time index.
+        
+        INPUT_FILE: The audio file to search for.
+        DIRECTORY: The directory with the video or audio files to search in.
+```
+
+| Option              | Data Type            | Description                                                                         | Default                                        |
+|---------------------|----------------------|-------------------------------------------------------------------------------------|------------------------------------------------|
+| `-r`, `--recursive` | flag                 | Search recursively in the specified directory.                                      |                                                |
+| `-e`, `--extension` | `string`             | The extension of the video/audio files to search in. Can be a comma separated list. | `mp4,mkv,avi,mov,wmv,mp3,wav,flac,ogg,m4a,wma` |
+| `-x`, `--exclude`   | `string`             | Exclude the specified extension from the search. Can be a comma separated list.     | `""`                                           |
+| `-t`, `--time`      | `integer`            | How many seconds of the input audio file to search for.                             | `-1` (meaning the entire file)                 |
+| `-w`, `--window`    | `integer`            | The window size in seconds to search for the audio file.                            | `60`                                           |
+| `-f`, `--format`    | `json \| txt \| raw` | The output format.                                                                  | `"txt"`                                        |
+| `-c`, `--threads`   | `integer`            | The number of CPU threads to use.                                                   | half of system cpu threads                     |
+| `--ffmpeg`          | `string`             | The path to the ffmpeg executable.                                                  | from system path                               |
+| `--no-clean`        | flag                 | Do not clean up temporary files.                                                    |                                                |
+| `--silent`          | flag                 | Do not print anything but the final output to the console.                          |                                                |
+| `--debug`           | flag                 | Print debug information to the console.                                             |                                                |
+| `--dry-run`         | flag                 | Do not run the program, just print the parameters.                                  |                                                |
+| `--version`         | flag                 | Print the version number and exit.                                                  |                                                |
+| `--legacy`          | flag                 | Use the legacy cli.                                                                 |                                                |
+| `--help`            | flag                 | Show help message and exit.                                                         |                                                |
+
+### Legacy CLI
+```shell
+    aivd --legacy [-h] --find-offset-of <audio file> [--within <folder>]
             [--extension <file extension>] [--recursive <boolean>]
             [--extension-skip <file extension>] [--window <seconds>]
             [--log-level <level>] [--raw <boolean>] [--ffmpeg <path>]
@@ -30,6 +59,7 @@ Thus, it can for example be used to find the intro of a tv show in its episodes.
 
 | Option                             | Type      | Description                                     | Default             | Required |
 |------------------------------------|-----------|-------------------------------------------------|---------------------|----------|
+| `--legacy`                         | flag      | Needed to use the legacy cli                    |                     | yes      |
 | `-h` or `--help`                   | flag      | Display the help dialog                         |                     | no       |
 | `--find-offset-of <audio file>`    | `string`  | Audio file to search for                        |                     | yes      |
 | `--within <folder>`                | `string`  | Folder path with video files to search in       | `"."`               | no       |
