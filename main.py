@@ -9,7 +9,7 @@ from detector import Detector
 from utils import os_helpers
 from utils.logger import Logger
 
-__version__ = "2.1.3"
+__version__ = "2.1.4"
 
 _PERMITTED_EXTENSIONS = ["mp4", "mkv", "avi", "mov", "wmv", "mp3", "wav", "flac", "ogg", "m4a", "wma"]
 
@@ -49,6 +49,10 @@ def load_legacy(ctx, _param, value):
                    "both the audio file conversion via ffmpeg and the audio file search.")
 @click.option("--ffmpeg", type=click.Path(exists=True), default=lambda: os_helpers.find_ffmpeg(),
               help="The path to the ffmpeg executable. Default is the system path.")
+@click.option("--ffmpeg-processes", type=int, default=1, help="The number of ffmpeg processes to run at the same time."
+                                                              "Default is 1.")
+@click.option("--ffmpeg-args", type=str, default=None, help="Additional arguments to pass to ffmpeg."
+                                                            "Best pass them in quotes.")
 @click.option("--no-clean", is_flag=True, help="Do not clean up temporary files.")
 @click.option("--silent", is_flag=True, help="Do not print anything but the final output to the console.")
 @click.option("--debug", is_flag=True, help="Print debug information to the console.")
@@ -57,8 +61,8 @@ def load_legacy(ctx, _param, value):
               expose_value=False, is_eager=True)
 @click.option("--legacy", is_flag=True, help="Use the legacy cli.", callback=load_legacy,
               expose_value=False, is_eager=True)
-def main(input_file, directory, recursive, extension, exclude, time_, window, format_, threads, ffmpeg, no_clean,
-         silent, debug, dry_run):
+def main(input_file, directory, recursive, extension, exclude, time_, window, format_, threads, ffmpeg,
+         ffmpeg_processes, ffmpeg_args, no_clean, silent, debug, dry_run):
     """
     Find the INPUT_FILE audio file in the specified video or audio files in a folder and return the time index.
 
@@ -92,6 +96,8 @@ def main(input_file, directory, recursive, extension, exclude, time_, window, fo
     logger.debug(f"\tFormat: {format_}")
     logger.debug(f"\tThreads: {threads}")
     logger.debug(f"\tFFmpeg: '{ffmpeg}'")
+    logger.debug(f"\tFFmpeg processes: {ffmpeg_processes}")
+    logger.debug(f"\tFFmpeg args: {ffmpeg_args}")
     logger.debug(f"\tSkipping clean up: {no_clean}")
     logger.empty_line()
 
@@ -115,8 +121,11 @@ def main(input_file, directory, recursive, extension, exclude, time_, window, fo
         logger.info("Dry run, exiting!")
         return
 
-    with Detector(input_file, files, time_, window, ffmpeg, logger, not no_clean, threads) as detector:
-        data = detector.run()
+    with Detector(input_file, files, time_, window, ffmpeg, logger, not no_clean, threads, ffmpeg_processes)\
+            as detector:
+        data = detector.run(
+            ffmpeg_args if (ffmpeg_args is not None and ffmpeg_args != "" and ffmpeg_args != "None") else None
+        )
 
     if format_ == "json":
         logger.debug("Outputting JSON...")

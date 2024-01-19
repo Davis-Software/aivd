@@ -31,23 +31,25 @@ Thus, it can for example be used to find the intro of a tv show in its episodes.
         DIRECTORY: The directory with the video or audio files to search in.
 ```
 
-| Option              | Data Type            | Description                                                                         | Default                                        |
-|---------------------|----------------------|-------------------------------------------------------------------------------------|------------------------------------------------|
-| `-r`, `--recursive` | flag                 | Search recursively in the specified directory.                                      |                                                |
-| `-e`, `--extension` | `string`             | The extension of the video/audio files to search in. Can be a comma separated list. | `mp4,mkv,avi,mov,wmv,mp3,wav,flac,ogg,m4a,wma` |
-| `-x`, `--exclude`   | `string`             | Exclude the specified extension from the search. Can be a comma separated list.     | `""`                                           |
-| `-t`, `--time`      | `integer`            | How many seconds of the input audio file to search for.                             | `-1` (meaning the entire file)                 |
-| `-w`, `--window`    | `integer`            | The window size in seconds to search for the audio file.                            | `60`                                           |
-| `-f`, `--format`    | `json \| txt \| raw` | The output format.                                                                  | `"txt"`                                        |
-| `-c`, `--threads`   | `integer`            | The number of CPU threads to use.                                                   | half of system cpu threads                     |
-| `--ffmpeg`          | `string`             | The path to the ffmpeg executable.                                                  | from system path                               |
-| `--no-clean`        | flag                 | Do not clean up temporary files.                                                    |                                                |
-| `--silent`          | flag                 | Do not print anything but the final output to the console.                          |                                                |
-| `--debug`           | flag                 | Print debug information to the console.                                             |                                                |
-| `--dry-run`         | flag                 | Do not run the program, just print the parameters.                                  |                                                |
-| `--version`         | flag                 | Print the version number and exit.                                                  |                                                |
-| `--legacy`          | flag                 | Use the legacy cli.                                                                 |                                                |
-| `--help`            | flag                 | Show help message and exit.                                                         |                                                |
+| Option               | Data Type            | Description                                                                         | Default                                          |
+|----------------------|----------------------|-------------------------------------------------------------------------------------|--------------------------------------------------|
+| `-r`, `--recursive`  | flag                 | Search recursively in the specified directory.                                      |                                                  |
+| `-e`, `--extension`  | `string`             | The extension of the video/audio files to search in. Can be a comma separated list. | `"mp4,mkv,avi,mov,wmv,mp3,wav,flac,ogg,m4a,wma"` |
+| `-x`, `--exclude`    | `string`             | Exclude the specified extension from the search. Can be a comma separated list.     | `""`                                             |
+| `-t`, `--time`       | `integer`            | How many seconds of the input audio file to search for.                             | `-1` (meaning the entire file)                   |
+| `-w`, `--window`     | `integer`            | The window size in seconds to search for the audio file.                            | `60`                                             |
+| `-f`, `--format`     | `json \| txt \| raw` | The output format.                                                                  | `"txt"`                                          |
+| `-c`, `--threads`    | `integer`            | The number of CPU threads to use.                                                   | half of system cpu threads                       |
+| `--ffmpeg`           | `string`             | The path to the ffmpeg executable.                                                  | from system path                                 |
+| `--ffmpeg-processes` | `integer`            | The number of ffmpeg processes to run at the same time.                             | `1`                                              |
+| `--ffmpeg-args`      | `string`             | Additional arguments to pass to ffmpeg. Best pass them in quotes.                   | `None`                                           |
+| `--no-clean`         | flag                 | Do not clean up temporary files.                                                    |                                                  |
+| `--silent`           | flag                 | Do not print anything but the final output to the console.                          |                                                  |
+| `--debug`            | flag                 | Print debug information to the console.                                             |                                                  |
+| `--dry-run`          | flag                 | Do not run the program, just print the parameters.                                  |                                                  |
+| `--version`          | flag                 | Print the version number and exit.                                                  |                                                  |
+| `--legacy`           | flag                 | Use the legacy cli.                                                                 |                                                  |
+| `--help`             | flag                 | Show help message and exit.                                                         |                                                  |
 
 ### Legacy CLI
 ```shell

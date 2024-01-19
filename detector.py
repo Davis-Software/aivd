@@ -39,7 +39,7 @@ def _detector_thread(file_obj):
 
 class Detector:
     def __init__(self, base_file: str, files: list[str], time_: int, window: int, ffmpeg: str, logger: Logger,
-                 clean=True, threads=1):
+                 clean=True, aivd_threads=1, ffmpeg_processes=1):
         self._base_file = base_file
         self._files = files
         self.__ready_files, self.__to_convert = os_helpers.is_audio_files(files)
@@ -48,8 +48,8 @@ class Detector:
         self.__correlate = None
         self.__argmax = None
 
-        self._ffmpeg_semaphore = threading.Semaphore(threads)
-        self._threads = threads
+        self._ffmpeg_semaphore = threading.Semaphore(ffmpeg_processes)
+        self._threads = aivd_threads
 
         self.time = time_
         self.window = window
@@ -74,7 +74,7 @@ class Detector:
             self.logger.error(f"The Application was terminated: {exc_type.__name__}")
         self.clean_up()
 
-    def __ffmpeg_thread(self, file, file_obj):
+    def __ffmpeg_thread(self, file, file_obj, additional_args=None):
         self._ffmpeg_semaphore.acquire()
         target = file_obj["location"]
         self.logger.debug(f"\tConverting '{file}' to '{target}'...")
@@ -89,6 +89,9 @@ class Detector:
             "-i", file,
             target
         ])
+
+        if additional_args is not None:
+            ffmpeg_opts.extend(additional_args)
 
         ffmpeg = subprocess.Popen(
             ffmpeg_opts,
@@ -136,7 +139,7 @@ class Detector:
         self.logger.debug("Base file loaded.")
         self.logger.empty_line()
 
-    def _convert(self):
+    def _convert(self, ffmpeg_args=None):
         if len(self.__to_convert) == 0:
             self.logger.info("No files to convert. Skipping conversion...")
             return
@@ -152,7 +155,7 @@ class Detector:
 
             threading.Thread(
                 target=self.__ffmpeg_thread,
-                args=(file, file_obj, )
+                args=(file, file_obj, ffmpeg_args, )
             ).start()
 
             self.__converter_map[file] = file_obj
@@ -209,9 +212,9 @@ class Detector:
         self.logger.debug("Clean up complete.")
         self.logger.empty_line()
 
-    def run(self):
+    def run(self, ffmpeg_args=None):
         self._load()
-        self._convert()
+        self._convert(ffmpeg_args)
         self._detect()
 
         return self._output_data
