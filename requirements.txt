@@ -1,6 +1,5 @@
-librosa==0.8.0
-scipy==1.6.1
-numpy~=1.21.6
-pyinstaller
-click
-colorama
+librosa==1.0.0
+scipy==1.18.1
+numpy==2.5.4
+click==8.5.1
+colorama==0.4.6

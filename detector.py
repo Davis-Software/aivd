@@ -97,6 +97,7 @@ class Detector:
             ffmpeg_opts,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            env=os_helpers.subprocess_env(),
         )
         ffmpeg.wait()
 

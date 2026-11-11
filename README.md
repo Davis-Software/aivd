@@ -16,9 +16,9 @@ Thus, it can for example be used to find the intro of a tv show in its episodes.
 
 ### Requirements
 * currently works on linux only
-* `python3.5 - python3.7` only (scipy)
+* `python3.10+` (builds use `python3.12`)
 * `ffmpeg` is required
-* development requirements can be installed with `pip3 install -r requirements.txt`
+* runtime requirements can be installed with `pip3 install -r requirements.txt`
 
 ### Usage
 ```shell
@@ -74,7 +74,13 @@ Thus, it can for example be used to find the intro of a tv show in its episodes.
 | `--ffmpeg <path>`                  | `string`  | Path to a custom ffmpeg installation            | `"/usr/bin/ffmpeg"` | no       |
 
 ### Compilation
-You can use pyinstaller to generate a binary in `./dist/`
+You can use pyinstaller to generate a binary in `./dist/` (on Linux `objdump` from `binutils` is required)
 ```shell
+    pip3 install -r requirements-build.txt
     pyinstaller aivd.spec
 ```
+
+### CI
+The GitLab pipeline (`.gitlab-ci.yml`) builds the Linux binary on every push and runs a smoke test with it.
+Pushing a tag `vX.Y.Z` (must match `__version__` in `main.py`) additionally uploads the binary to the
+package registry and creates a GitLab release.

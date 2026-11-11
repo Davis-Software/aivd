@@ -1,6 +1,7 @@
 import json
 import click
 import os.path
+import multiprocessing
 
 from colorama import Fore, Style
 
@@ -147,4 +148,5 @@ def main(input_file, directory, recursive, extension, exclude, time_, window, fo
 
 
 if __name__ == '__main__':
+    multiprocessing.freeze_support()  # required for multiprocessing.Pool in PyInstaller builds
     main()

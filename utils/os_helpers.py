@@ -1,8 +1,27 @@
 import os
+import sys
 import subprocess
 import multiprocessing
 
 from utils.logger import Logger
+
+
+def subprocess_env():
+    """
+    Environment for external programs (ffmpeg).
+
+    In a PyInstaller build the bootloader points LD_LIBRARY_PATH at the bundled libraries. Child processes
+    inherit it and the system ffmpeg then loads the bundled (possibly older) libstdc++ etc. and crashes, so
+    restore the original value before spawning anything.
+    """
+    env = dict(os.environ)
+    if getattr(sys, "frozen", False):
+        original = env.pop("LD_LIBRARY_PATH_ORIG", None)
+        if original is not None:
+            env["LD_LIBRARY_PATH"] = original
+        else:
+            env.pop("LD_LIBRARY_PATH", None)
+    return env
 
 
 def find_ffmpeg():
