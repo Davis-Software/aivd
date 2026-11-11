@@ -1,0 +1,103 @@
+stages:
+  - build
+  - test
+  - release
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PIP_ROOT_USER_ACTION: "ignore"
+  BINARY_NAME: "aivd-linux-x86_64"
+  PACKAGE_REGISTRY_URL: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/aivd/${CI_COMMIT_TAG}"
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_COMMIT_TAG
+
+build:linux:
+  stage: build
+  # Bookworm (glibc 2.36) so the binary also runs on older distros than the newest one.
+  image: python:3.12-slim-bookworm
+  cache:
+    key:
+      files:
+        - requirements.txt
+        - requirements-build.txt
+    paths:
+      - .cache/pip
+  before_script:
+    - apt-get update -qq
+    - apt-get install -y -qq --no-install-recommends binutils > /dev/null  # PyInstaller needs objdump
+    - pip install -r requirements-build.txt
+  script:
+    - |
+      if [ -n "$CI_COMMIT_TAG" ]; then
+        APP_VERSION=$(python -c 'import re; print(re.search(r"__version__ = \"(.+?)\"", open("main.py").read()).group(1))')
+        if [ "v${APP_VERSION}" != "$CI_COMMIT_TAG" ]; then
+          echo "Tag '$CI_COMMIT_TAG' does not match __version__ '$APP_VERSION' in main.py"
+          exit 1
+        fi
+      fi
+    - pyinstaller --noconfirm --clean aivd.spec
+    - ./dist/aivd --version
+    - mv dist/aivd "dist/${BINARY_NAME}"
+  artifacts:
+    name: "aivd-${CI_COMMIT_REF_SLUG}"
+    paths:
+      - dist/${BINARY_NAME}
+    expire_in: 1 week
+
+test:smoke:
+  stage: test
+  # Different (newer) distro than the build image, with a system ffmpeg, like a real user machine.
+  image: debian:trixie-slim
+  needs: ["build:linux"]
+  before_script:
+    - apt-get update -qq
+    - apt-get install -y -qq --no-install-recommends ffmpeg > /dev/null
+  script:
+    - BIN="./dist/${BINARY_NAME}"
+    - $BIN --version
+    - mkdir -p testdata/media
+    # 8 s "intro" hidden 17 s into a 40 s video
+    - ffmpeg -loglevel error -y -f lavfi -i "anoisesrc=d=8:c=pink:seed=1" -ar 22050 -ac 1 testdata/intro.wav
+    - >
+      ffmpeg -loglevel error -y -f lavfi -i "anoisesrc=d=40:c=white:a=0.3:seed=17" -i testdata/intro.wav
+      -f lavfi -i "color=c=black:s=64x64:d=40"
+      -filter_complex "[1]adelay=17000[d];[0][d]amix=inputs=2:normalize=0[a]"
+      -map 2:v -map "[a]" -shortest -c:v libx264 -c:a aac testdata/media/episode.mp4
+    - $BIN --silent -f raw -e mp4 -c 1 testdata/intro.wav testdata/media | tee result.json
+    - grep -Eq '"testdata/media/episode.mp4": \{"offset": 1[67]\.[0-9]+, "score": [0-9.]+, "speed": [0-9.]+, "found": true' result.json
+
+release:upload:
+  stage: release
+  image: curlimages/curl:latest
+  needs: ["build:linux", "test:smoke"]
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
+  script:
+    - >
+      curl --fail-with-body --header "JOB-TOKEN: ${CI_JOB_TOKEN}"
+      --upload-file "dist/${BINARY_NAME}" "${PACKAGE_REGISTRY_URL}/${BINARY_NAME}"
+
+release:create:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  needs: ["release:upload"]
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
+  script:
+    - echo "Creating release ${CI_COMMIT_TAG}"
+  release:
+    tag_name: $CI_COMMIT_TAG
+    name: "AIVD $CI_COMMIT_TAG"
+    description: "AIVD $CI_COMMIT_TAG"
+    assets:
+      links:
+        - name: "${BINARY_NAME}"
+          url: "${PACKAGE_REGISTRY_URL}/${BINARY_NAME}"
+          link_type: package

@@ -1,56 +1,76 @@
 import os
-import subprocess
-import multiprocessing
+import sys
+import shutil
 
 from utils.logger import Logger
 
 
+def subprocess_env():
+    """
+    Environment for external programs (ffmpeg).
+
+    In a PyInstaller build the bootloader points LD_LIBRARY_PATH at the bundled libraries. Child processes
+    inherit it and the system ffmpeg then loads the bundled (possibly older) libstdc++ etc. and crashes, so
+    restore the original value before spawning anything.
+    """
+    env = dict(os.environ)
+    if getattr(sys, "frozen", False):
+        original = env.pop("LD_LIBRARY_PATH_ORIG", None)
+        if original is not None:
+            env["LD_LIBRARY_PATH"] = original
+        else:
+            env.pop("LD_LIBRARY_PATH", None)
+    return env
+
+
 def find_ffmpeg():
-    output = subprocess.check_output(['which', 'ffmpeg'])
-    return output.decode('utf-8').strip()
+    """Path of ffmpeg on PATH, or None."""
+    return shutil.which("ffmpeg")
 
 
 def thread_count():
-    return multiprocessing.cpu_count()
+    """CPUs this process may actually use (respects affinity / taskset where the platform supports it)."""
+    if hasattr(os, "process_cpu_count"):  # Python 3.13+
+        return os.process_cpu_count() or 1
+    if hasattr(os, "sched_getaffinity"):
+        return len(os.sched_getaffinity(0)) or 1
+    return os.cpu_count() or 1
+
+
+def default_threads():
+    return max(1, thread_count() // 2)
+
+
+def parse_extensions(value):
+    """'mp4, .MKV,avi' -> {'mp4', 'mkv', 'avi'}; '*' -> None (everything)."""
+    if value.strip() == "*":
+        return None
+    return {ext.strip().lstrip(".").lower() for ext in value.split(",") if ext.strip()}
+
+
+def _extension(path):
+    return os.path.splitext(path)[1].lstrip(".").lower()
 
 
 def file_walker(files_path, logging: Logger, recursive=False, extension="*", extension_skip=""):
-    files = os.listdir(files_path)
+    include = parse_extensions(extension)
+    exclude = parse_extensions(extension_skip) or set()
+
+    if recursive:
+        candidates = [os.path.join(root, name) for root, _dirs, names in os.walk(files_path) for name in names]
+    else:
+        candidates = [entry.path for entry in os.scandir(files_path) if entry.is_file()]
+
     output = []
-
-    for i, file in enumerate(files):
-        file = os.path.join(files_path, file)
-
-        if not os.path.isfile(file) and recursive:
-            output.extend(
-                file_walker(file, logging, recursive, extension, extension_skip)
-            )
+    for file in sorted(candidates):
+        ext = _extension(file)
+        if include is not None and ext not in include:
+            logging.debug(f"Skipping '{file}': extension '{ext}' is not in '{extension}'")
             continue
-
-        if extension != "*" and True not in [file.endswith(val) for val in extension.split(",")]:
-            logging.debug(f"Skipping file {i + 1} ('{file}') of {len(files)} as "
-                          f"it does not match the specified file extension '{extension}'")
+        if ext in exclude:
+            logging.debug(f"Skipping '{file}': extension '{ext}' is excluded")
             continue
-
-        if extension_skip != "" and True in [file.endswith(val) for val in extension_skip.split(",")]:
-            logging.debug(f"Skipping file {i + 1} ('{file}') of {len(files)} as "
-                          f"it matches the specified file extension '{extension_skip}'")
-            continue
-
-        logging.debug(f"Found file '{file}' ({i + 1} of {len(files)})")
+        logging.debug(f"Found file '{file}'")
         output.append(file)
 
     return output
-
-
-def is_audio_files(files):
-    ready_files = []
-    to_convert_files = []
-
-    for file in files:
-        if file.endswith(".wav"):
-            ready_files.append(file)
-        else:
-            to_convert_files.append(file)
-
-    return ready_files, to_convert_files
