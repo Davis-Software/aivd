@@ -4,11 +4,17 @@ from colorama import Fore, Style
 
 
 class Logger:
-    """Logs to stderr so stdout only ever contains the result."""
+    """
+    Logs to stderr so stdout only ever contains the result.
 
-    def __init__(self, silent=False, debug=False):
-        self._silent = silent
-        self._debug = debug
+    With `events` (JSON progress mode) stderr has to stay machine-readable: info and debug output is dropped,
+    warnings and errors become JSON events.
+    """
+
+    def __init__(self, silent=False, debug=False, events=None):
+        self._events = events
+        self._silent = silent or events is not None
+        self._debug = debug and events is None
 
     @property
     def is_silent(self):
@@ -25,11 +31,22 @@ class Logger:
                        err=True)
 
     def error(self, message, trace=None):
+        if self._events is not None:
+            self._events.message("error", message)
+            return
         self.echo("ERROR", message, secondary_color=Fore.YELLOW, prefix_color=Fore.RED, message_color=Fore.LIGHTRED_EX)
         if trace is not None and self._debug and not self._silent:
             click.echo(f"\t{Fore.WHITE}{trace}{Style.RESET_ALL}", err=True)
 
+    def file_error(self, message):
+        """An error about a single file. Not repeated as a JSON event, the file's progress event contains it."""
+        if self._events is None:
+            self.error(message)
+
     def warning(self, message):
+        if self._events is not None:
+            self._events.message("warning", message)
+            return
         self.echo("WARNING", message, prefix_color=Fore.YELLOW, message_color=Fore.LIGHTYELLOW_EX)
 
     def info(self, message):
