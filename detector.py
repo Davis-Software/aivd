@@ -1,221 +1,178 @@
 from __future__ import annotations
 
-import os
-import time
-import uuid
-import threading
-import traceback
+import math
+import shlex
 import subprocess
 import multiprocessing
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
+
+import numpy as np
 
 from utils import os_helpers
 from utils.logger import Logger
 
 
-def _detector_thread(file_obj):
-    try:
-        load, correlate, argmax, y_find, sr, logger = file_obj["args"]
-    except KeyError:
-        return {"file": None, "offset": -1}
+class DetectorError(Exception):
+    """An error that makes the whole run impossible (bad snippet, bad options)."""
 
-    logger.debug(f"\tDetecting in '{file_obj['name']}'...")
 
-    try:
-        y_within, _ = load(file_obj["location"], sr=sr)
-        c = correlate(y_within, y_find, mode='valid', method='fft')
-        peak = argmax(c)
-        offset = round(peak / sr, 2)
+# Set once per worker process by _init_worker, so the snippet isn't sent along with every job.
+_snippet = None
+_snippet_norm = None
 
-        logger.debug(f"\tDetected in '{file_obj['name']}' at {offset} seconds.")
-    except Exception as e:
-        logger.error(f"\tError detecting in '{file_obj['name']}': '{e}'", traceback.format_exc())
-        offset = -1
 
-    return {
-        "file": file_obj["name"],
-        "offset": offset
-    }
+def _init_worker(snippet):
+    global _snippet, _snippet_norm
+    _snippet = snippet
+    _snippet_norm = float(np.sqrt(np.dot(snippet, snippet)))
+
+
+def _match(audio):
+    """
+    Slide the snippet over `audio` and return (best sample index, score).
+
+    The score is the normalised cross-correlation at that position: 1.0 means the audio there is the snippet
+    (up to volume), values near 0 mean no similarity. Normalising by the local energy also stops loud passages
+    from winning just because they are loud.
+    """
+    from scipy.signal import correlate
+
+    n = len(_snippet)
+    audio = audio.astype(np.float64)
+    corr = correlate(audio, _snippet, mode="valid", method="fft")
+
+    energy = np.concatenate(([0.0], np.cumsum(audio * audio)))
+    local_norm = np.sqrt(np.maximum(energy[n:] - energy[:-n], 0.0))
+    denominator = local_norm * _snippet_norm
+
+    ncc = np.zeros_like(corr)
+    np.divide(corr, denominator, out=ncc, where=denominator > 1e-9)
+
+    peak = int(np.argmax(ncc))
+    return peak, float(min(ncc[peak], 1.0))
 
 
 class Detector:
     def __init__(self, base_file: str, files: list[str], time_: int, window: int, ffmpeg: str, logger: Logger,
-                 clean=True, aivd_threads=1, ffmpeg_processes=1):
+                 aivd_threads=1, ffmpeg_processes=1, ffmpeg_args: str | None = None, min_score=0.3,
+                 strict_window=False):
         self._base_file = base_file
         self._files = files
-        self.__ready_files, self.__to_convert = os_helpers.is_audio_files(files)
-
-        self.__load = None
-        self.__correlate = None
-        self.__argmax = None
-
-        self._ffmpeg_semaphore = threading.Semaphore(ffmpeg_processes)
         self._threads = aivd_threads
+        self._ffmpeg_processes = ffmpeg_processes
+        self._ffmpeg_args = shlex.split(ffmpeg_args) if ffmpeg_args else []
 
         self.time = time_
         self.window = window
         self.ffmpeg = ffmpeg
         self.logger = logger
-        self.clean = clean
+        self.min_score = min_score
+        self.strict_window = strict_window
 
-        self.__y_find = None
-        self.__sr = None
+        self._snippet = None
+        self._sr = None
 
-        self.__converter_map = {}
-
-        self._output_data = {}
-
-        self._init()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if exc_type is not None:
-            self.logger.error(f"The Application was terminated: {exc_type.__name__}")
-        self.clean_up()
-
-    def __ffmpeg_thread(self, file, file_obj, additional_args=None):
-        self._ffmpeg_semaphore.acquire()
-        target = file_obj["location"]
-        self.logger.debug(f"\tConverting '{file}' to '{target}'...")
-
-        ffmpeg_opts = [self.ffmpeg, "-y"]
-
-        if not self.logger.is_debug or self.logger.is_silent:
-            ffmpeg_opts.extend(["-loglevel", "quiet"])
-
-        ffmpeg_opts.extend([
-            "-to", str(self.window),
-            "-i", file,
-            target
-        ])
-
-        if additional_args is not None:
-            ffmpeg_opts.extend(additional_args)
-
-        ffmpeg = subprocess.Popen(
-            ffmpeg_opts,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=os_helpers.subprocess_env(),
-        )
-        ffmpeg.wait()
-
-        if ffmpeg.returncode == 0:
-            file_obj["success"] = True
-            self.logger.debug(f"\tConverted '{file}' to '{target}'.")
-        else:
-            self.logger.error(
-                f"\tError converting '{file}' to '{target}'!",
-                ffmpeg.stderr.read().decode('utf-8') + "\n" + ffmpeg.stdout.read().decode('utf-8')
-            )
-
-        file_obj["complete"] = True
-        self._ffmpeg_semaphore.release()
-
-    def _init(self):
-        self.logger.info("Loading libraries...")
-        try:
-            from numpy import argmax
-            from librosa import load
-            from scipy.signal import correlate
-
-            self.__load = load
-            self.__correlate = correlate
-            self.__argmax = argmax
-        except Exception as e:
-            self.logger.error(f"Error loading libraries: '{e}'")
-            exit(1)
-        self.logger.debug("Libraries loaded.")
-        self.logger.empty_line()
-
-    def _load(self):
+    def _load_snippet(self):
         self.logger.info("Loading base file...")
         try:
-            self.__y_find, self.__sr = self.__load(self._base_file, sr=None,
-                                                   duration=self.time if self.time > 0 else None)
+            from librosa import load
+            snippet, self._sr = load(self._base_file, sr=None, mono=True,
+                                     duration=self.time if self.time > 0 else None)
         except Exception as e:
-            self.logger.error(f"Error loading base file: '{e}'")
-            exit(2)
-        self.logger.debug("Base file loaded.")
+            raise DetectorError(f"Could not load base file '{self._base_file}': {e}") from e
+
+        if len(snippet) == 0 or not np.any(snippet):
+            raise DetectorError(f"Base file '{self._base_file}' is empty or silent.")
+        self._snippet = snippet.astype(np.float64)
+
+        length = len(snippet) / self._sr
+        self.logger.debug(f"\tBase file: {length:.2f}s at {self._sr} Hz.")
+
+        if self.window <= length:
+            if self.strict_window:
+                raise DetectorError(f"The window ({self.window}s) must be longer than the base file "
+                                    f"({length:.2f}s). Increase --window or shorten the base file with --time.")
+            new_window = math.ceil(length) + self.window
+            self.logger.warning(f"The window ({self.window}s) is shorter than the base file ({length:.2f}s). "
+                                f"Extending it to {new_window}s so the base file can start anywhere in the first "
+                                f"{self.window}s. Use --strict-window to make this an error instead.")
+            self.window = new_window
         self.logger.empty_line()
 
-    def _convert(self, ffmpeg_args=None):
-        if len(self.__to_convert) == 0:
-            self.logger.info("No files to convert. Skipping conversion...")
-            return
+    def _decode(self, file):
+        """Decode the first `window` seconds of `file` to mono float32 at the snippet's sample rate."""
+        command = [
+            self.ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error",
+            "-t", str(self.window), "-i", file,
+            "-vn", "-sn", "-dn",
+            *self._ffmpeg_args,
+            "-ac", "1", "-ar", str(self._sr), "-f", "f32le", "pipe:1",
+        ]
+        self.logger.debug(f"\tDecoding '{file}': {shlex.join(command)}")
 
-        self.logger.info(f"Converting {len(self.__to_convert)} files...")
+        result = subprocess.run(command, capture_output=True, stdin=subprocess.DEVNULL,
+                                env=os_helpers.subprocess_env())
+        if result.returncode != 0:
+            lines = result.stderr.decode("utf-8", errors="replace").strip().splitlines()
+            message = " / ".join(line.strip() for line in lines if line.strip()) or f"exit code {result.returncode}"
+            raise RuntimeError(f"ffmpeg failed: {message}")
 
-        for file in self.__to_convert:
-            file_obj = {
-                "location": f"/tmp/{uuid.uuid4().hex}.wav",
-                "success": False,
-                "complete": False
-            }
+        audio = np.frombuffer(result.stdout, dtype="<f4")
+        if len(audio) < len(self._snippet):
+            raise RuntimeError(f"only {len(audio) / self._sr:.2f}s of audio, "
+                               f"shorter than the base file ({len(self._snippet) / self._sr:.2f}s)")
+        return audio
 
-            threading.Thread(
-                target=self.__ffmpeg_thread,
-                args=(file, file_obj, ffmpeg_args, )
-            ).start()
-
-            self.__converter_map[file] = file_obj
-
-        # Wait for all conversions to complete
-        while not all([self.__converter_map[file]["complete"] for file in self.__converter_map]):
-            time.sleep(.1)
-
-        self.logger.debug("Conversions complete.")
-        self.logger.empty_line()
+    def _result(self, peak=None, score=None, error=None):
+        if error is not None:
+            return {"offset": None, "score": None, "found": False, "error": error}
+        return {
+            "offset": round(peak / self._sr, 2),
+            "score": round(score, 3),
+            "found": score >= self.min_score,
+            "error": None,
+        }
 
     def _detect(self):
-        self.logger.info(f"Detecting in {len(self.__ready_files)} original files and {len(self.__converter_map)} "
-                         f"converted files...")
-        files = []
+        self.logger.info(f"Searching {len(self._files)} files...")
+        self.logger.debug(f"\tUsing {self._ffmpeg_processes} ffmpeg processes and {self._threads} detector processes.")
+        results = {}
 
-        for file in self.__ready_files:
-            files.append({
-                "name": file,
-                "location": file,
-            })
-        for file in self.__converter_map:
-            if not self.__converter_map[file]["success"]:
-                continue
-            files.append({
-                "name": file,
-                "location": self.__converter_map[file]["location"],
-                "args": (self.__load, self.__correlate, self.__argmax, self.__y_find, self.__sr, self.logger)
-            })
+        # "spawn": the process pool is started while decoder threads are running, and forking a multi-threaded
+        # process can deadlock.
+        with ThreadPoolExecutor(max_workers=self._ffmpeg_processes) as decoders, \
+                ProcessPoolExecutor(max_workers=self._threads, mp_context=multiprocessing.get_context("spawn"),
+                                    initializer=_init_worker, initargs=(self._snippet,)) as matchers:
 
-        with multiprocessing.Pool(processes=self._threads) as pool:
-            self.logger.debug(f"\tUsing {self._threads} threads.")
-            results = pool.map(_detector_thread, files)
+            decoding = {decoders.submit(self._decode, file): file for file in self._files}
+            matching = {}
 
-        for result in results:
-            if result["file"] is None:
-                continue
-            self._output_data[result["file"]] = result["offset"]
+            for future in as_completed(decoding):
+                file = decoding[future]
+                try:
+                    audio = future.result()
+                except Exception as e:
+                    self.logger.error(f"\tCould not read '{file}': {e}")
+                    results[file] = self._result(error=str(e))
+                    continue
+                matching[matchers.submit(_match, audio)] = file
+
+            for future in as_completed(matching):
+                file = matching[future]
+                try:
+                    peak, score = future.result()
+                except Exception as e:
+                    self.logger.error(f"\tError detecting in '{file}': {e}")
+                    results[file] = self._result(error=str(e))
+                    continue
+                results[file] = self._result(peak, score)
+                self.logger.debug(f"\t'{file}': best match at {results[file]['offset']}s, "
+                                  f"score {results[file]['score']}.")
 
         self.logger.debug("Detection complete.")
         self.logger.empty_line()
+        return {file: results[file] for file in self._files}
 
-    def clean_up(self):
-        if not self.clean:
-            self.logger.debug("Skipping clean up.")
-            return
-
-        self.logger.info("Cleaning up...")
-        for file in self.__converter_map:
-            file = self.__converter_map[file]["location"]
-            if os.path.exists(file):
-                os.remove(file)
-                self.logger.debug(f"\tRemoved '{file}'")
-        self.logger.debug("Clean up complete.")
-        self.logger.empty_line()
-
-    def run(self, ffmpeg_args=None):
-        self._load()
-        self._convert(ffmpeg_args)
-        self._detect()
-
-        return self._output_data
+    def run(self):
+        self._load_snippet()
+        return self._detect()

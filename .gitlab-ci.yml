@@ -70,8 +70,8 @@ test:smoke:
       -f lavfi -i "color=c=black:s=64x64:d=40"
       -filter_complex "[1]adelay=17000[d];[0][d]amix=inputs=2:normalize=0[a]"
       -map 2:v -map "[a]" -shortest -c:v libx264 -c:a aac testdata/media/episode.mp4
-    - $BIN --silent -f json -e mp4 -c 1 testdata/intro.wav testdata/media | tee result.json
-    - grep -Eq '"testdata/media/episode.mp4": 1[67]\.[0-9]+' result.json
+    - $BIN --silent -f raw -e mp4 -c 1 testdata/intro.wav testdata/media | tee result.json
+    - grep -Eq '"testdata/media/episode.mp4": \{"offset": 1[67]\.[0-9]+, "score": [0-9.]+, "found": true' result.json
 
 release:upload:
   stage: release
