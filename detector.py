@@ -169,8 +169,12 @@ def _match(audio):
 class Detector:
     def __init__(self, base_file: str, files: list[str], time_: int, window: int, ffmpeg: str, logger: Logger,
                  aivd_threads=1, ffmpeg_processes=1, ffmpeg_args: str | None = None, min_score=0.5,
-                 strict_window=False, from_end=False, speed_search=True):
+                 strict_window=False, from_end=False, speed_search=True, base_data: bytes | None = None,
+                 on_result=None):
         self._base_file = base_file
+        self._base_data = base_data
+        self._base_name = "stdin" if base_data is not None else f"'{base_file}'"
+        self._on_result = on_result
         self._files = files
         self._threads = aivd_threads
         self._ffmpeg_processes = ffmpeg_processes
@@ -187,10 +191,10 @@ class Detector:
 
         self._variants = None
 
-    def _run_ffmpeg(self, input_options, file):
-        """Decode `file` to mono float32 at SAMPLE_RATE."""
+    def _run_ffmpeg(self, input_options, file, stdin_data=None, pass_fds=()):
+        """Decode `file` to mono float32 at SAMPLE_RATE. With `stdin_data`, `file` should be "pipe:0"."""
         command = [
-            self.ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error",
+            self.ffmpeg, *([] if stdin_data is not None else ["-nostdin"]), "-hide_banner", "-loglevel", "error",
             *input_options, "-i", file,
             "-vn", "-sn", "-dn",
             *self._ffmpeg_args,
@@ -198,8 +202,9 @@ class Detector:
         ]
         self.logger.debug(f"\tDecoding '{file}': {shlex.join(command)}")
 
-        result = subprocess.run(command, capture_output=True, stdin=subprocess.DEVNULL,
-                                env=os_helpers.subprocess_env())
+        stdin = {"input": stdin_data} if stdin_data is not None else {"stdin": subprocess.DEVNULL}
+        result = subprocess.run(command, capture_output=True, pass_fds=pass_fds, env=os_helpers.subprocess_env(),
+                                **stdin)
         if result.returncode != 0:
             lines = result.stderr.decode("utf-8", errors="replace").strip().splitlines()
             message = " / ".join(line.strip() for line in lines if line.strip()) or f"exit code {result.returncode}"
@@ -216,18 +221,48 @@ class Detector:
         hours, minutes, seconds = found.groups()
         return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
 
+    def _decode_buffer(self, input_options, data):
+        """
+        Decode audio held in memory. ffmpeg can't seek in a pipe, which some formats need (mp4/m4a with the index at
+        the end of the file), so on Linux the data goes into an anonymous in-memory file (memfd) that ffmpeg opens
+        via /dev/fd. Nothing is written to disk either way.
+        """
+        if not hasattr(os, "memfd_create"):
+            hint = ("on this platform the input is read from a pipe, and mp4/m4a files need their index at the start "
+                    "for that: ffmpeg -i in.m4a -c copy -movflags +faststart out.m4a")
+            try:
+                audio = self._run_ffmpeg(input_options, "pipe:0", stdin_data=data)
+            except RuntimeError as e:
+                raise RuntimeError(f"{e} ({hint})") from e
+            if len(audio) == 0:  # ffmpeg can exit successfully on such a file without decoding anything
+                raise RuntimeError(f"no audio could be decoded ({hint})")
+            return audio
+
+        fd = os.memfd_create("aivd-input")
+        try:
+            view = memoryview(data)
+            while view:
+                view = view[os.write(fd, view):]
+            return self._run_ffmpeg(input_options, f"/dev/fd/{fd}", pass_fds=(fd,))
+        finally:
+            os.close(fd)
+
     def _load_snippet(self):
         self.logger.info("Loading base file...")
+        input_options = ["-t", str(self.time)] if self.time > 0 else []
         try:
-            audio = self._run_ffmpeg(["-t", str(self.time)] if self.time > 0 else [], self._base_file)
+            if self._base_data is None:
+                audio = self._run_ffmpeg(input_options, self._base_file)
+            else:
+                audio = self._decode_buffer(input_options, self._base_data)
         except RuntimeError as e:
-            raise DetectorError(f"Could not load base file '{self._base_file}': {e}") from e
+            raise DetectorError(f"Could not load base file from {self._base_name}: {e}") from e
 
         length = len(audio) / SAMPLE_RATE
         if length < 1:
-            raise DetectorError(f"Base file '{self._base_file}' must contain at least 1 second of audio.")
+            raise DetectorError(f"Base file from {self._base_name} must contain at least 1 second of audio.")
         if not np.any(audio):
-            raise DetectorError(f"Base file '{self._base_file}' is silent.")
+            raise DetectorError(f"Base file from {self._base_name} is silent.")
         self.logger.debug(f"\tBase file: {length:.2f}s.")
 
         self._variants = snippet_variants(power_spectrogram(audio), self.speed_search)
@@ -265,6 +300,11 @@ class Detector:
             "error": None,
         }
 
+    def _finished(self, results, file, result):
+        results[file] = result
+        if self._on_result is not None:
+            self._on_result(file, result)
+
     def _detect(self):
         self.logger.info(f"Searching {len(self._files)} files...")
         self.logger.debug(f"\tUsing {self._ffmpeg_processes} ffmpeg processes and {self._threads} detector processes.")
@@ -289,8 +329,8 @@ class Detector:
                 try:
                     audio, start = future.result()
                 except Exception as e:
-                    self.logger.error(f"\tCould not read '{file}': {e}")
-                    results[file] = self._result(error=str(e))
+                    self.logger.file_error(f"\tCould not read '{file}': {e}")
+                    self._finished(results, file, self._result(error=str(e)))
                     continue
                 matching[matchers.submit(_match, audio)] = (file, start)
 
@@ -299,10 +339,10 @@ class Detector:
                 try:
                     frame, score, speed = future.result()
                 except Exception as e:
-                    self.logger.error(f"\tError detecting in '{file}': {e}")
-                    results[file] = self._result(error=str(e))
+                    self.logger.file_error(f"\tError detecting in '{file}': {e}")
+                    self._finished(results, file, self._result(error=str(e)))
                     continue
-                results[file] = self._result(frame, score, speed, start)
+                self._finished(results, file, self._result(frame, score, speed, start))
                 self.logger.debug(f"\t'{file}': best match at {results[file]['offset']}s, "
                                   f"score {results[file]['score']}, speed {results[file]['speed']}.")
 

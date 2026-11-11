@@ -27,7 +27,7 @@ Thus, it can for example be used to find the intro of a tv show in its episodes.
         Find the INPUT_FILE audio file in the specified video or audio files in a
         folder and return the time index.
         
-        INPUT_FILE: The audio file to search for.
+        INPUT_FILE: The audio file to search for, or - to read it from stdin.
         DIRECTORY: The directory with the video or audio files to search in.
 ```
 
@@ -47,6 +47,7 @@ Thus, it can for example be used to find the intro of a tv show in its episodes.
 | `--ffmpeg`             | `string`             | The path to the ffmpeg executable.                                                                | from `PATH`                                      |
 | `--ffmpeg-processes`   | `integer`            | The number of ffmpeg processes to run at the same time.                                           | half of the usable CPU threads                   |
 | `--ffmpeg-args`        | `string`             | Additional output arguments for ffmpeg, e.g. `"-map 0:a:1"` for the second audio track.           | `None`                                           |
+| `--progress`           | flag                 | Print progress updates to stderr (see [Progress](#progress)), also with `--silent`.                |                                                  |
 | `--silent`             | flag                 | Do not print anything but the final output.                                                       |                                                  |
 | `--debug`              | flag                 | Print debug information.                                                                          |                                                  |
 | `--dry-run`            | flag                 | Do not run the search, just print the parameters and found files.                                 |                                                  |
@@ -54,6 +55,26 @@ Thus, it can for example be used to find the intro of a tv show in its episodes.
 | `--help`               | flag                 | Show help message and exit.                                                                       |                                                  |
 
 Logs go to stderr, so stdout only contains the result and can be piped (e.g. `aivd -f json intro.wav ./episodes | jq`).
+
+The input audio can also be piped in by passing `-` as `INPUT_FILE`, in any format ffmpeg can read. It is read into
+memory, nothing is written to disk. Outside of Linux, mp4/m4a input needs its index at the start of the file to be
+read from stdin (`ffmpeg -i in.m4a -c copy -movflags +faststart out.m4a`).
+```shell
+    curl -s https://example.com/intro.mp3 | aivd -f json - ./episodes
+```
+
+### Progress
+With `--progress` AIVD reports every finished file on stderr. With `-f txt` these are short text lines. With
+`-f json` or `-f raw` they are JSON objects, one per line, and the normal log output is turned off so stderr stays
+machine-readable; stdout still only contains the final result.
+```json
+{"type": "start", "total": 24}
+{"type": "warning", "message": "The window (10s) is shorter than the base file (20.00s). Extending it to 30s ..."}
+{"type": "progress", "done": 1, "total": 24, "file": "episodes/ep01.mkv", "result": {"offset": 17.0, "score": 0.863, "speed": 1.0, "found": true, "error": null}}
+{"type": "done", "total": 24, "found": 22, "not_found": 1, "failed": 1}
+```
+A fatal error (e.g. ffmpeg missing, unreadable input audio) is reported as `{"type": "error", "message": "..."}`
+before AIVD exits with code `1`.
 
 ### Output
 For every file AIVD reports where the input audio matches best and how well it matches:
