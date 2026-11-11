@@ -29,8 +29,9 @@ def print_text(data):
         if result["error"] is not None:
             click.echo(f"\t{Fore.RED}-> error: {Fore.RESET}{result['error']}{Style.RESET_ALL}")
         elif result["found"]:
+            speed = f", speed {result['speed']}" if result["speed"] != 1 else ""
             click.echo(f"\t{Fore.GREEN}-> {Fore.RESET}{result['offset']}{Fore.WHITE}s {Fore.RESET}offset "
-                       f"{Fore.WHITE}(score {result['score']}){Style.RESET_ALL}")
+                       f"{Fore.WHITE}(score {result['score']}{speed}){Style.RESET_ALL}")
         else:
             click.echo(f"\t{Fore.YELLOW}-> not found {Fore.WHITE}(best score {result['score']} "
                        f"at {result['offset']}s){Style.RESET_ALL}")
@@ -48,12 +49,18 @@ def print_text(data):
 @click.option("-t", "--time", "time_", type=int, default=-1, help="How many seconds of the input audio file "
                                                                   "to search for. Default is the whole audio file.")
 @click.option("-w", "--window", type=click.IntRange(min=1), default=60, show_default=True,
-              help="How many seconds at the start of each file to search in. If this is shorter than the input "
-                   "audio, it is extended automatically (see --strict-window).")
+              help="How many seconds at the start (or end, see --from-end) of each file to search in. If this is "
+                   "shorter than the input audio, it is extended automatically (see --strict-window).")
+@click.option("--from-end", is_flag=True,
+              help="Search the last --window seconds of each file instead of the first, e.g. for end credits. "
+                   "Offsets are still reported from the start of the file.")
 @click.option("--strict-window", is_flag=True,
               help="Exit with an error instead of extending --window when it is shorter than the input audio.")
-@click.option("-s", "--min-score", type=click.FloatRange(0, 1), default=0.3, show_default=True,
+@click.option("-s", "--min-score", type=click.FloatRange(0, 1), default=0.5, show_default=True,
               help="Minimum match score (0-1) for the input audio to count as found in a file.")
+@click.option("--no-speed-search", is_flag=True,
+              help="Only match at normal speed. By default the PAL speed-up (4%) and its reverse are tried too, "
+                   "with and without pitch shift.")
 @click.option("-f", "--format", "format_", type=click.Choice(["json", "txt", "raw"]), default="txt",
               show_default=True, help="The output format.")
 @click.option("-c", "--threads", type=click.IntRange(1, os_helpers.thread_count()),
@@ -61,7 +68,8 @@ def print_text(data):
               help="The number of processes used for the audio search.")
 @click.option("--ffmpeg", type=click.Path(exists=True, dir_okay=False), default=None,
               help="The path to the ffmpeg executable. Default is ffmpeg from PATH.")
-@click.option("--ffmpeg-processes", type=click.IntRange(min=1), default=1, show_default=True,
+@click.option("--ffmpeg-processes", type=click.IntRange(min=1), default=os_helpers.default_threads,
+              show_default="half the CPU threads",
               help="The number of ffmpeg processes to run at the same time.")
 @click.option("--ffmpeg-args", type=str, default=None,
               help="Additional output arguments for ffmpeg, e.g. \"-map 0:a:1\" to use the second audio track. "
@@ -71,8 +79,8 @@ def print_text(data):
 @click.option("--dry-run", is_flag=True, help="Do not run the search, just print the parameters and found files.")
 @click.option("--version", is_flag=True, help="Print the version number and exit.", callback=print_version,
               expose_value=False, is_eager=True)
-def main(input_file, directory, recursive, extension, exclude, time_, window, strict_window, min_score, format_,
-         threads, ffmpeg, ffmpeg_processes, ffmpeg_args, silent, debug, dry_run):
+def main(input_file, directory, recursive, extension, exclude, time_, window, from_end, strict_window, min_score,
+         no_speed_search, format_, threads, ffmpeg, ffmpeg_processes, ffmpeg_args, silent, debug, dry_run):
     """
     Find the INPUT_FILE audio file in the specified video or audio files in a folder and return the time index.
 
@@ -107,8 +115,9 @@ def main(input_file, directory, recursive, extension, exclude, time_, window, st
     logger.debug(f"\tExtension: {extension}")
     logger.debug(f"\tExclude: {exclude}")
     logger.debug(f"\tTime: {time_}")
-    logger.debug(f"\tWindow: {window}{' (strict)' if strict_window else ''}")
+    logger.debug(f"\tWindow: {window}{' (strict)' if strict_window else ''}{' from end' if from_end else ''}")
     logger.debug(f"\tMin score: {min_score}")
+    logger.debug(f"\tSpeed search: {not no_speed_search}")
     logger.debug(f"\tFormat: {format_}")
     logger.debug(f"\tThreads: {threads}")
     logger.debug(f"\tFFmpeg: '{ffmpeg}'")
@@ -125,7 +134,7 @@ def main(input_file, directory, recursive, extension, exclude, time_, window, st
         return
 
     detector = Detector(input_file, files, time_, window, ffmpeg, logger, threads, ffmpeg_processes,
-                        ffmpeg_args, min_score, strict_window)
+                        ffmpeg_args, min_score, strict_window, from_end, not no_speed_search)
     try:
         data = detector.run()
     except DetectorError as e:
