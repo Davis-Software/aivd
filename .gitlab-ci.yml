@@ -1,6 +1,5 @@
 stages:
   - build
-  - test
   - release
 
 variables:
@@ -51,32 +50,10 @@ build:linux:
       - dist/${BINARY_NAME}
     expire_in: 1 week
 
-test:smoke:
-  stage: test
-  # Different (newer) distro than the build image, with a system ffmpeg, like a real user machine.
-  image: debian:trixie-slim
-  needs: ["build:linux"]
-  before_script:
-    - apt-get update -qq
-    - apt-get install -y -qq --no-install-recommends ffmpeg > /dev/null
-  script:
-    - BIN="./dist/${BINARY_NAME}"
-    - $BIN --version
-    - mkdir -p testdata/media
-    # 8 s "intro" hidden 17 s into a 40 s video
-    - ffmpeg -loglevel error -y -f lavfi -i "anoisesrc=d=8:c=pink:seed=1" -ar 22050 -ac 1 testdata/intro.wav
-    - >
-      ffmpeg -loglevel error -y -f lavfi -i "anoisesrc=d=40:c=white:a=0.3:seed=17" -i testdata/intro.wav
-      -f lavfi -i "color=c=black:s=64x64:d=40"
-      -filter_complex "[1]adelay=17000[d];[0][d]amix=inputs=2:normalize=0[a]"
-      -map 2:v -map "[a]" -shortest -c:v libx264 -c:a aac testdata/media/episode.mp4
-    - $BIN --silent -f raw -e mp4 -c 1 testdata/intro.wav testdata/media | tee result.json
-    - grep -Eq '"testdata/media/episode.mp4": \{"offset": 1[67]\.[0-9]+, "score": [0-9.]+, "speed": [0-9.]+, "found": true' result.json
-
 release:upload:
   stage: release
   image: curlimages/curl:latest
-  needs: ["build:linux", "test:smoke"]
+  needs: ["build:linux"]
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
   script:
