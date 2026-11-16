@@ -2,11 +2,12 @@
 
 > Developed by [Davis_Software](https://github.com/Davis-Software) &copy; 2024
 
-![GitHub release (latest by date)](https://img.shields.io/github/v/release/Davis-Software/aivd?style=for-the-badge)
-![GitHub issues](https://img.shields.io/github/issues-raw/Davis-Software/aivd?style=for-the-badge)
-![GitHub closed issues](https://img.shields.io/github/issues-closed/Davis-Software/aivd?style=for-the-badge)
-![GitHub all releases](https://img.shields.io/github/downloads/Davis-Software/aivd/total?style=for-the-badge)
-![GitHub](https://img.shields.io/github/license/Davis-Software/aivd?style=for-the-badge)
+[![Latest release](https://img.shields.io/gitlab/v/release/davis_software%2Faivd?gitlab_url=https%3A%2F%2Fgitlab.software-city.org&style=for-the-badge)](https://gitlab.software-city.org/davis_software/aivd/-/releases)
+[![Pipeline status](https://img.shields.io/gitlab/pipeline-status/davis_software%2Faivd?branch=master&gitlab_url=https%3A%2F%2Fgitlab.software-city.org&style=for-the-badge)](https://gitlab.software-city.org/davis_software/aivd/-/pipelines)
+[![Open issues](https://img.shields.io/gitlab/issues/open-raw/davis_software%2Faivd?gitlab_url=https%3A%2F%2Fgitlab.software-city.org&style=for-the-badge)](https://gitlab.software-city.org/davis_software/aivd/-/work_items?state=opened)
+[![Closed issues](https://img.shields.io/gitlab/issues/closed-raw/davis_software%2Faivd?gitlab_url=https%3A%2F%2Fgitlab.software-city.org&style=for-the-badge)](https://gitlab.software-city.org/davis_software/aivd/-/work_items?state=closed)
+[![GitHub downloads](https://img.shields.io/github/downloads/Davis-Software/aivd/total?label=github%20downloads&style=for-the-badge)](https://github.com/Davis-Software/aivd/releases)
+[![License](https://img.shields.io/gitlab/license/davis_software%2Faivd?gitlab_url=https%3A%2F%2Fgitlab.software-city.org&style=for-the-badge)](https://gitlab.software-city.org/davis_software/aivd/-/blob/master/LICENSE)
 
 ### What is AIVD?
 AIVD or Audio-In-Video-Detector finds a specified audio file in the audio track
